@@ -5,6 +5,8 @@ import streamlit as st
 import pickle as pkl
 import matplotlib.pyplot as plt
 import pandas as pd
+import joblib
+
 import plotly.graph_objs as go
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import matplotlib.dates as mdates
@@ -14,14 +16,27 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import train_test_split
 from datetime import date
 from datetime import timedelta
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.preprocessing.sequence import TimeseriesGenerator
+from keras.models import Sequential
+from keras.layers import LSTM,Dense,Dropout
+from tensorflow.keras.optimizers import Adam
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import mean_squared_error, mean_absolute_error,  mean_absolute_percentage_error, r2_score
+import xgboost as xgb
+from xgboost import XGBRegressor
+
+
 
 #Origem dos dados
 # ==============================================================================
 import yfinance as yf
+from keras.models import load_model
 
-with open('modelo_ltsm.pkl', 'rb') as file_2:
-  modelo_ltsm = pkl.load(file_2)
-
+model_lstm = load_model('my_model.h5')
+print(model_lstm.summary())
 # Plots
 # ==============================================================================
 
@@ -187,11 +202,15 @@ indice = "BZ=F"   # Brent Crude Oil Last Day Financ (BZ=F)
 inicio = "2009-01-01" #Define a data de ínicio para importação dos dados
 #Coleta dados históricos do índice de referência até a data corrente
 dados_acao = yf.download(indice, inicio) #Quando a biblioteca é chamada sem uma data final, carrega as cotações até a data corrente
-df_cotacoes = pd.DataFrame({indice: dados_acao['Close']})
+#print(dados_acao)
+
+df_cotacoes = pd.DataFrame(dados_acao['Close'].tolist(),index=dados_acao.index.tolist(), columns=[indice])
+print(df_cotacoes)
+
 
 st.write("Vamos verificar inicialmente o comportamento gráfico das cotações do índice no período:")
 
-df1 = pd.DataFrame(df_cotacoes)
+df1 = df_cotacoes.copy()
 df1.rename(columns={indice: 'Brent Crude Oil'}, inplace = True)
 df2 = pd.DataFrame(data=[])
 df3 = pd.DataFrame(data=[])
@@ -201,6 +220,7 @@ fig = cria_grafico(df1, df2,df3,df4,'Histórico de Cotações Brent Crude Oil', 
 st.plotly_chart(fig, use_container_width=True)
 
 st.write(" **Análises de Oscilações** ")
+print(df_cotacoes)
 mean_value = df_cotacoes[indice].describe().loc[['mean']].mean()
 media_valor_brent = round(float(mean_value), 2)
 txt_analise_oscilacao = "No gráfico acima, podemos verificar algumas oscilações bruscas na cotação do Brent Crude Oil ao longo dos últimos 15 anos. Na média, as cotações ficaram na casa dos USD " + str(media_valor_brent) + ", sendo que em abril/2020 a cotação atingiu seu menor preço no período, ficando em USD 19,33 e em março/2022 atingiu o maior valor do período, ficando em USD 127,98. Abaixo vamos detalhar um pouco esta variações"
@@ -256,3 +276,157 @@ st.write("Foi realizado o comparativo entre cinco modelos diferentes: ARIMA, PRO
 st.write("O modelo LSTM foi o que apresentou os melhores resultados e, portanto, foi o escolhido para a predição")
 st.write("O notebook com todos os modelos pode ser acessado em: ")
 
+#Define Constantes para todos os  Modelo
+steps = 120  #Tamanho da base de testes. Optamos por treinar com todo o histórico e testar com ultimos x dias definidos na variável
+du = 10       #dias úteis para previsão futura
+Lista_indicadores = ['Erro Médio Absoluto - MAE','Erro Quadrático Médio - MSE','Raiz Quadrada do Erro Médio - RMSE','Média Percentual Absoluta do Erro - MAPE','Coeficiente de Determinação(R²)']
+
+
+# LSTM
+df_LSTM = pd.DataFrame({indice: dados_acao['Close'].tolist(), "Date":dados_acao.index.tolist()})
+#df_LSTM.reset_index(inplace=True)
+
+#Aplicando suavização exponencial
+alpha = 0.15   # Fator de suavização
+
+# O parâmetro alpha na suavização exponencial controla a taxa de decaimento dos pesos atribuídos às observações passadas.
+# Determina o quão rapidamente o impacto das observações antigas diminui à medida que você avança no tempo.
+
+df_LSTM['Smoothed_Close'] = df_LSTM[indice].ewm(alpha=alpha, adjust=False).mean()
+close_data = df_LSTM[indice].values #fechamento não suavizado
+close_data = close_data.reshape(-1,1) #transformar em array
+
+#Agora aplicamos a normalização dos dados para não termos ruído
+scaler = MinMaxScaler(feature_range=(0, 1))
+scaler = scaler.fit(close_data)
+close_data_escalado = scaler.transform(close_data)
+
+#Separando as bases em treino e teste
+look_back = 10
+close_train_lstm = close_data_escalado[:-steps]
+close_test_lstm = close_data_escalado[-(steps):]
+
+date_train_lstm = df_LSTM['Date'][:-steps]
+date_test_lstm = df_LSTM['Date'][-steps:]
+
+# Gerar sequências temporais para treinamento e teste em um modelo de aprendizado de máquina
+train_generator = TimeseriesGenerator(close_train_lstm, close_train_lstm, length=look_back, batch_size=20)
+test_generator = TimeseriesGenerator(close_test_lstm, close_test_lstm, length=look_back, batch_size=1)
+
+#Aplica o modelo
+np.random.seed(7)
+model_lstm = Sequential()
+model_lstm.add(LSTM(100, activation='relu', input_shape=(look_back,1)))
+model_lstm.add(Dense(1)),
+model_lstm.compile(optimizer='adam', loss='mean_squared_error')
+num_epochs = 20
+retornomodelo = model_lstm.fit(train_generator, epochs=num_epochs, verbose=1)
+
+# 1. Fazer previsões usando o conjunto de teste
+test_predictions_lstm = model_lstm.predict(test_generator)
+prediction_lstm = test_predictions_lstm.reshape((-1))
+close_data_g = close_data_escalado.reshape((-1))
+
+# Plota um gráfico para comparar o realizado com o periodo testado + previsões
+df1 = pd.DataFrame(data= close_data_g, index=df_LSTM['Date'].values, columns=['Dados Históricos'] )
+#df1.rename(columns={indice: 'Dados Históricos'}, inplace = True)
+df2 = pd.DataFrame(data= prediction_lstm, index=date_test_lstm[-prediction_lstm.size:], columns=['Predições'] )
+#df2.rename(columns={indice: 'Predições'}, inplace = True)
+df3 = pd.DataFrame(data=[])
+df4 = pd.DataFrame(data=[])
+
+#figLSTM = cria_grafico(df1, df2,df3,df4,'Predições com Modelo LSTM', 1,steps+1 )
+#fig.show()
+
+#calcula as métricas de avaliação de desempenho do modelo
+MAE_LSTM = mean_absolute_error(close_data_g[-prediction_lstm.size:], prediction_lstm)
+MSE_LSTM = mean_squared_error(close_data_g[-prediction_lstm.size:], prediction_lstm, squared=True)
+RMSE_LSTM = mean_squared_error(close_data_g[-prediction_lstm.size:], prediction_lstm, squared=False)
+MAPE_LSTM = mean_absolute_percentage_error(close_data_g[-prediction_lstm.size:], prediction_lstm)
+r2_LSTM = r2_score(close_data_g[-prediction_lstm.size:], prediction_lstm)
+dados_LSTM = {
+'Indicador': Lista_indicadores,
+'Resultado': [MAE_LSTM, MSE_LSTM, RMSE_LSTM,MAPE_LSTM,r2_LSTM]
+}
+df_result_LSTM = pd.DataFrame(data = dados_LSTM['Resultado'], index=dados_LSTM['Indicador'], columns =['Resultado'])
+df_result_LSTM
+
+predictions_LSTM_inv = scaler.inverse_transform(prediction_lstm.reshape(-1, 1))
+df_LSTM_pred_g = pd.DataFrame(data=predictions_LSTM_inv, columns = [indice], index= df_LSTM[-predictions_LSTM_inv.size:]['Date'])
+
+#Monta um DF para armazenar os dados de previsão das ações
+x = 0
+prev_ini = date.today() + timedelta(days = 1)
+na = [prev_ini]
+
+while (len(na)+1) <= du :
+  prev_fim_d = prev_ini + timedelta(days = x+1)
+  x=x+1
+  if (prev_fim_d.weekday() not in (5,6)):
+    prev_fim = prev_fim_d
+    na.append(prev_fim)
+
+df_dt_futura = pd.DataFrame({"Date":na})
+
+#Cria um segundo DF para unir as cotações correntes e as previsões das ações
+df_cotacao_futura = pd.DataFrame({"Date":df_cotacoes.index.values})
+df_cotacao_futura = pd.concat([df_cotacao_futura, df_dt_futura])
+df_cotacao_futura['Date'] = pd.to_datetime(df_cotacao_futura['Date'])
+
+#Monta os dataframes. A ideia é testar com os últimos <steps> dias e treinar com os dias anteriores
+df_treina = df_cotacoes[:-steps]
+df_teste  = df_cotacoes[-steps:]
+df_prev   = df_cotacao_futura[-(steps+du):]
+df_teste_g = pd.DataFrame(df_teste.index)
+df_teste_g["teste"] = df_teste[indice].values
+
+
+
+
+#Gera as previsões
+close_prev_lstm = close_data_escalado[-(steps+du+look_back):]
+data_prev_lstm = df_cotacao_futura[-(steps+du):]
+prev_generator = TimeseriesGenerator(close_prev_lstm, close_prev_lstm, length=look_back, batch_size=1)
+previsions_lstm = model_lstm.predict(prev_generator)
+prev_lstm = previsions_lstm.reshape((-1))
+
+
+prev_lstm_inv = scaler.inverse_transform(prev_lstm.reshape(-1, 1))
+df_LSTM_prev_g = pd.DataFrame(data=prev_lstm_inv, columns = [indice], index= df_cotacao_futura[-prev_lstm_inv.size:]['Date'])
+
+df = df_dt_futura['Date'][-1:].values
+di = df_cotacoes.index[-(steps+du+look_back):]
+
+layoutPREV= go.Layout(
+                  title = 'Previsões - Petróleo Brent - Próximos 10 dias',
+                  titlefont = dict(size=20))
+
+figPrev = go.Figure(layout=layoutPREV)
+figPrev.add_trace(go.Scatter(x=df_cotacoes.index.values, y=df_cotacoes[indice].values,
+                      mode='lines',
+                      name='Dados Históricos'))
+
+figPrev.add_trace(go.Scatter(x=df_LSTM_pred_g.index.values, y=df_LSTM_pred_g[indice].values,
+                    mode='lines',
+                    name='Predição'))
+figPrev.add_trace(go.Scatter(x=df_dt_futura['Date'] , y=df_LSTM_prev_g[indice].values,
+                      mode='lines',
+                     name='Previsão'))
+
+
+
+figPrev.update_xaxes(
+      rangeslider_visible=True,
+      rangeselector=dict(
+          buttons=list([
+              dict(count=1, label="1m", step="month", stepmode="backward"),
+              dict(count=6, label="6m", step="month", stepmode="backward"),
+              dict(count=1, label="YTD", step="year", stepmode="todate"),
+              dict(count=1, label="1y", step="year", stepmode="backward"),
+              dict(step="all")
+          ])
+      ),
+      range=(di[0].strftime('%Y-%m-%d'), df[0].strftime('%Y-%m-%d'))
+  )
+
+st.plotly_chart(figPrev, use_container_width=True)
