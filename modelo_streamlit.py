@@ -276,7 +276,7 @@ st.divider()
 st.subheader('Modelo de Predição')
 st.write("Foi realizado o comparativo entre cinco modelos diferentes: ARIMA, PROPHET, LSTM, LSTM Ajustado e XBooster")
 st.write("O modelo LSTM foi o que apresentou os melhores resultados e, portanto, foi o escolhido para a predição")
-st.write("O notebook com todos os modelos pode ser acessado em: https://github.com/denise-xavier/TechChallenge4/blob/main/Modelos_de_Previs%C3%A3o_Petr%C3%B3leo.ipynb")
+st.write("O notebook com todos os modelos pode ser acessado em: https://github.com/denise-tc/techchallenge4/blob/main/Modelos_de_Previs%C3%A3o_Petr%C3%B3leo.ipynb")
 
 #Define Constantes para todos os  Modelo
 steps = 120  #Tamanho da base de testes. Optamos por treinar com todo o histórico e testar com ultimos x dias definidos na variável
