@@ -26,15 +26,18 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error,  mean_absolute_percentage_error, r2_score
 
-
-
-
 #Origem dos dados
 # ==============================================================================
 import yfinance as yf
 from keras.models import load_model
 
-model_lstm = load_model('modelo_lstm.pkl')
+# Carregar o modelo LSTM do arquivo .pkl
+with open('modelo_lstm.pkl', 'rb') as file:
+    model_lstm = pkl.load(file)
+
+# Salvar o modelo LSTM no formato .h5
+model_lstm.save('modelo_lstm.h5')
+
 print(model_lstm.summary())
 # Plots
 # ==============================================================================
