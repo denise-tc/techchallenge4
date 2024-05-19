@@ -1,0 +1,13 @@
+streamlit
+matplotlib
+pandas
+joblib
+plotly
+pandas
+numpy
+scikit-learn
+datetime
+tensorflow
+keras
+scipy
+yfinance
