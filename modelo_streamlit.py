@@ -25,8 +25,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error,  mean_absolute_percentage_error, r2_score
-import xgboost as xgb
-from xgboost import XGBRegressor
+
 
 
 
