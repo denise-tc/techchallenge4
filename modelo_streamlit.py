@@ -34,7 +34,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error,  mean_absol
 import yfinance as yf
 from keras.models import load_model
 
-model_lstm = load_model('my_model.h5')
+model_lstm = load_model('modelo_lstm.pkl')
 print(model_lstm.summary())
 # Plots
 # ==============================================================================
